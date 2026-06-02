@@ -318,3 +318,46 @@ javac -d /tmp scheduler-core/src/main/java/io/kinetis/core/idempotency/Idempoten
 ```bash
 ./gradlew :scheduler-core:compileJava    # all scheduler-core classes compile cleanly
 ```
+
+**After Steps 3–4–14 (all migrations so far) — Docker**
+```bash
+# Find your postgres container name
+docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" | grep postgres
+
+# Create test DB (replace <container> with your container name)
+docker exec -it <container> psql -U scheduler -c "CREATE DATABASE kinetis_test;"
+
+# Copy migration files into container
+docker cp scheduler-core/src/main/resources/db/migration/ <container>:/tmp/migrations/
+
+# Run migrations in order
+docker exec -it <container> psql -U scheduler -d kinetis_test -f /tmp/migrations/V1__core_schema.sql
+docker exec -it <container> psql -U scheduler -d kinetis_test -f /tmp/migrations/V2__indexes.sql
+docker exec -it <container> psql -U scheduler -d kinetis_test -f /tmp/migrations/V3__outbox.sql
+docker exec -it <container> psql -U scheduler -d kinetis_test -f /tmp/migrations/V6__priority_and_tenancy.sql
+
+# Verify — expected: jobs, job_runs, outbox, rate_limits
+docker exec -it <container> psql -U scheduler -d kinetis_test -c "\dt"
+
+# Verify indexes — expected: idx_due (shard_id+priority), idx_expired, idx_outbox_undispatched
+docker exec -it <container> psql -U scheduler -d kinetis_test -c "\di"
+
+# Confirm idx_due rebuilt correctly with shard_id + priority as leading keys
+docker exec -it <container> psql -U scheduler -d kinetis_test -c "\d job_runs"
+
+# Smoke test V6 backfill
+docker exec -it <container> psql -U scheduler -d kinetis_test -c "
+INSERT INTO jobs (id, job_type, idempotency_key) VALUES (gen_random_uuid(), 'noop', 'test-1');
+INSERT INTO job_runs (id, job_id, state, scheduled_for, idempotency_key)
+SELECT gen_random_uuid(), id, 'SCHEDULED', now(), 'run-1' FROM jobs LIMIT 1;
+SELECT priority, tenant_id FROM job_runs;"
+
+# Cleanup
+docker exec -it <container> psql -U scheduler -c "DROP DATABASE kinetis_test;"
+```
+
+**What still won't compile (missing: Sharding + Cron)**
+```bash
+./gradlew :scheduler-core:compileJava   # ❌ until Steps 16-18 (cron) + Step 21 (sharding)
+./gradlew :worker:compileJava           # ❌ depends on scheduler-core
+```
