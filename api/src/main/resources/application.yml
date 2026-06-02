@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: kinetis
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/kinetis}
+    username: ${DB_USER:kinetis}
+    password: ${DB_PASSWORD:kinetis}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:16}
+      pool-name: kinetis-pool
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: kinetis
+
+# Scheduler tunables — see SchedulerProperties.
+# Durations accept ISO-8601 (PT30S) or shorthand (30s, 500ms).
+scheduler:
+  node-id:               ${NODE_ID:}
+  batch-size:            ${SCHED_BATCH_SIZE:100}
+  lease-ttl:             ${SCHED_LEASE_TTL:30s}
+  heartbeat-interval:    ${SCHED_HEARTBEAT_INTERVAL:10s}
+  poll-interval:         ${SCHED_POLL_INTERVAL:500ms}
+  reaper-interval:       ${SCHED_REAPER_INTERVAL:5s}
+  reaper-batch-size:     ${SCHED_REAPER_BATCH_SIZE:100}
+  cron-interval:         ${SCHED_CRON_INTERVAL:1s}
+  total-shards:          ${SCHED_TOTAL_SHARDS:16}
+  owned-shards:          ${SCHED_OWNED_SHARDS:all}
+  max-concurrent-runs:   ${SCHED_MAX_CONCURRENT_RUNS:1000}
+  # gRPC worker (Phase 3e)
+  worker-grpc-port:      ${WORKER_GRPC_PORT:9090}
+  worker-grpc-id:        ${WORKER_ID:}
+  scheduler-grpc-host:   ${SCHEDULER_GRPC_HOST:}
+  scheduler-grpc-port:   ${SCHEDULER_GRPC_PORT:9091}
+
+# Controls which role this process plays:
+#   standalone (default) — scheduler + in-process worker, no gRPC
+#   scheduler            — scheduler loops + gRPC dispatch to remote workers
+#   worker               — gRPC server only, receives and executes assignments
+app:
+  role: ${APP_ROLE:standalone}
+
+logging:
+  level:
+    io.kinetis: ${LOG_LEVEL:INFO}
