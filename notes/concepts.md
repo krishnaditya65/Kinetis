@@ -223,6 +223,74 @@ declared dead and your work reassigned.
 
 ---
 
+## Worker Module (Step 12)
+
+**JobHandler** — interface with one method: `handle(ctx)`. Your business logic goes here.
+Must be idempotent — delivery is at-least-once, so it may run more than once for the same work.
+
+**JobContext** — record passed to the handler: run/job ids, parsed JSON payload, attempt count.
+`attempt` is 0-based — use it to skip already-sent notifications on retries.
+
+**HandlerRegistry** — map of `jobType → handler`. Prevents duplicate registrations via
+`ConcurrentHashMap.putIfAbsent`. A worker advertises what it can run by what's registered here.
+
+**WorkerPool** — the core execution engine. Two thread pools inside:
+- `newVirtualThreadPerTaskExecutor()` — one virtual thread per job. Thousands can run concurrently cheaply.
+- `ScheduledExecutorService` (1 platform thread) — fires heartbeats on a reliable timer. Can't use virtual threads here because the JVM might suspend them, breaking the timing.
+
+`execute()` flow inside WorkerPool:
+```
+markRunning(token)        → LEASED → RUNNING, or drop if already fenced
+jobStore.findById()       → load job definition + retry policy
+registry.get(jobType)     → find handler, or fail if missing
+heartbeat starts          → pushes lease_expires_at forward every N seconds
+handler.handle(ctx)       → your business logic runs here
+markSucceeded(token)      → RUNNING → SUCCEEDED, or silently ignored if fenced
+heartbeat.cancel()        → always in finally block
+```
+
+**The fencing token through full lifecycle:**
+```
+claimDue()      → token=5, LEASED
+markRunning()   → WHERE token=5 → RUNNING
+heartbeat()     → WHERE token=5 → extends lease
+markSucceeded() → WHERE token=5 → SUCCEEDED
+
+--- worker dies mid-execution ---
+reaper finds it  → token=5, expired → reschedule → token becomes 6
+new worker runs  → token=7
+zombie wakes up  → markSucceeded(token=5) → 0 rows → ignored
+```
+
+**Three demo handlers:**
+- `NoOpHandler` — does nothing, succeeds. Smoke tests the full pipeline.
+- `SleepHandler` — blocks the thread. Proves heartbeat keeps lease alive past TTL.
+- `FailNTimesHandler` — throws on attempts 0..N-1, succeeds on attempt N. Tests retry + dead-letter path deterministically.
+
+**`AutoCloseable`** — Spring calls `close()` on shutdown. Stops heartbeats immediately,
+stops accepting new work, lets in-flight jobs finish. Without it the JVM would hang.
+
+---
+
+## SchedulerMetrics (Step 13)
+
+Thin wrapper over Micrometer counters. Each event in the lifecycle has a named counter:
+```
+kinetis.jobs.submitted    → job accepted by JobService
+kinetis.runs.leased       → run claimed by SchedulerLoop
+kinetis.runs.succeeded    → handler completed successfully
+kinetis.runs.failed       → handler threw an exception
+kinetis.runs.retried      → rescheduled for retry
+kinetis.runs.dead_lettered → retries exhausted or AT_MOST_ONCE
+kinetis.runs.reaped       → reclaimed by ReaperLoop
+```
+Micrometer pushes these to Prometheus. In Grafana:
+- `rate(kinetis.runs.dead_lettered[5m])` → alert on dead-letter spikes
+- `kinetis.runs.reaped` → watch for lease expiry patterns (indicates slow/crashing workers)
+- `kinetis.runs.succeeded - kinetis.runs.failed` → throughput health
+
+---
+
 ## Testing Checkpoints
 
 **After Step 1 (Gradle scaffold)**
