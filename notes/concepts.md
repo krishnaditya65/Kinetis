@@ -137,6 +137,47 @@ Centralising means they can never diverge on retry rules.
 
 ---
 
+## Data Stores (Step 8)
+
+**Mappers** — translates DB rows into Java objects. Spring hands each result row to the mapper,
+which reads columns by name and constructs the Java record. The `ZoneId.of()` call here is where
+the DB string becomes a typed `ZoneId` on read; `job.timezone().getId()` converts it back on write.
+```
+DB row (columns) → mapper → Job / JobRun record
+```
+
+**JobStore** — all SQL for the `jobs` table. Key method is `insertIfAbsent`: tries to insert,
+and if the idempotency key already exists (`ON CONFLICT DO NOTHING`), fetches and returns the
+existing id. Client can retry submission safely — never creates two jobs.
+
+**JobRunStore** — all SQL for `job_runs`, but **only** plain inserts and reads.
+State transitions (`SCHEDULED → LEASED → RUNNING → SUCCEEDED`) live in `LeaseManager`.
+Rule: if a SQL statement has `WHERE lease_token = ?`, it belongs in `LeaseManager`, not here.
+
+---
+
+## Job Service (Step 9)
+
+**SubmitCommand** — data bag carrying everything a caller wants when creating a job. No logic.
+Nulls are intentional — `JobService` applies defaults for anything not provided.
+
+**JobSubmission** — the receipt after submitting: `jobId`, `runId`, `created` flag.
+`created = false` means it was a duplicate submission — ids point at what already existed.
+
+**JobService** — the orchestrator. `submit()` does five things in one `@Transactional` call:
+```
+1. Apply defaults (delivery, retry, timezone)
+2. Derive idempotency key if not provided
+3. insertIfAbsent → jobId (new or existing)
+4. Duplicate → return existing ids, done
+5. New recurring job → set next_fire_time, CronScheduler takes over
+   New one-off job   → insert first JobRun as SCHEDULED, done
+```
+`@Transactional` = Spring wraps the whole method in one DB transaction.
+Job insert + run insert either both succeed or both roll back.
+
+---
+
 ## Testing Checkpoints
 
 **After Step 1 (Gradle scaffold)**
