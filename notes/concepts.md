@@ -178,6 +178,51 @@ Job insert + run insert either both succeed or both roll back.
 
 ---
 
+## Scheduler Loop (Step 10)
+
+**RunDispatcher** — a one-method interface (`@FunctionalInterface`). The scheduler hands it a
+leased run and doesn't care what happens next — could be in-process pool or gRPC to a remote worker.
+This is what lets Phase 3 swap in remote workers without touching scheduler-core.
+
+**SchedulerLoop** — the main poll loop. `tick()` does two things:
+1. Backpressure check: count LEASED+RUNNING rows in owned shards. If at capacity → skip this tick.
+2. `claimDue()` → `dispatchBatch()`. Claims a batch, hands to FairShareDispatcher.
+
+Backpressure prevents flooding the worker pool — without it, the scheduler would keep claiming
+runs that can't execute, piling up lease expirations for the reaper.
+
+---
+
+## ReaperLoop (Step 11)
+
+Crash recovery. Finds runs where `lease_expires_at < now()` — worker presumed dead.
+Routes each through `RetryHandler.onFailure()` — same path as an explicit worker failure.
+
+**Why the fencing token matters here:**
+Reaper bumps the token when rescheduling. If the "dead" worker was just slow and wakes up,
+it tries `markSucceeded(runId, oldToken)` → 0 rows updated → silently ignored.
+The DB resolves the race. No locks, no coordinator.
+
+**JVM crash causes:**
+- `OutOfMemoryError` — heap exhausted (large payloads, memory leak)
+- `StackOverflow` — infinite recursion in a handler
+- Native crash — JIT/JNI bug, produces `hs_err_pid.log`
+- `kill -9` / Linux OOM Killer — kernel kills the process, no cleanup chance
+- Hardware failure — machine dies, power cut, disk full
+
+**GC pause causes:**
+JVM stops all threads to reclaim memory ("stop-the-world"). Heartbeats stop during this.
+- Full GC on large heaps can pause for seconds or minutes
+- Heap pressure from too many objects created too fast
+- Java 21 + ZGC targets sub-millisecond pauses, but lease TTL protects you regardless
+
+**Mental model:** the reaper is a patrol asking "is anyone supposed to be working on this
+but hasn't checked in?" — lease-based failure detection. Same pattern as Kubernetes pod
+leases, Zookeeper ephemeral nodes. Prove you're alive by refreshing a timestamp, or get
+declared dead and your work reassigned.
+
+---
+
 ## Testing Checkpoints
 
 **After Step 1 (Gradle scaffold)**
