@@ -1,0 +1,92 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-kinetis}
+      POSTGRES_USER:     ${DB_USER:-kinetis}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-kinetis}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-kinetis} -d ${DB_NAME:-kinetis}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL:                    jdbc:postgresql://postgres:5432/${DB_NAME:-kinetis}
+      DB_USER:                   ${DB_USER:-kinetis}
+      DB_PASSWORD:               ${DB_PASSWORD:-kinetis}
+      SERVER_PORT:               8080
+      LOG_LEVEL:                 ${LOG_LEVEL:-INFO}
+      SCHED_LEASE_TTL:           ${SCHED_LEASE_TTL:-30s}
+      SCHED_HEARTBEAT_INTERVAL:  ${SCHED_HEARTBEAT_INTERVAL:-10s}
+      SCHED_REAPER_INTERVAL:     ${SCHED_REAPER_INTERVAL:-5s}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Remote worker — receives dispatch from the scheduler via gRPC.
+  # Start with: docker compose --profile grpc-workers up
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      DB_URL:               jdbc:postgresql://postgres:5432/${DB_NAME:-kinetis}
+      DB_USER:              ${DB_USER:-kinetis}
+      DB_PASSWORD:          ${DB_PASSWORD:-kinetis}
+      APP_ROLE:             worker
+      WORKER_ID:            worker-1
+      WORKER_GRPC_PORT:     9090
+      SCHEDULER_GRPC_HOST:  app
+      SCHEDULER_GRPC_PORT:  9091
+      LOG_LEVEL:            ${LOG_LEVEL:-INFO}
+    ports:
+      - "${WORKER_GRPC_PORT:-9095}:9090"
+    profiles:
+      - grpc-workers
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    depends_on:
+      - app
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER:     ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP:     "false"
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+
+volumes:
+  pgdata:
+  grafanadata:

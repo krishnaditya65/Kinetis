@@ -1,0 +1,48 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 0,
+  "title": "Kinetis Scheduler",
+  "uid": "job-scheduler",
+  "schemaVersion": 39,
+  "time": { "from": "now-15m", "to": "now" },
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Queue depth (due, waiting)",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "scheduler_runs_scheduled_depth", "legendFormat": "due" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Run outcomes / sec",
+      "gridPos": { "h": 6, "w": 18, "x": 6, "y": 0 },
+      "targets": [
+        { "expr": "rate(scheduler_runs_succeeded_total[1m])", "legendFormat": "succeeded" },
+        { "expr": "rate(scheduler_runs_failed_total[1m])", "legendFormat": "failed" },
+        { "expr": "rate(scheduler_runs_retried_total[1m])", "legendFormat": "retried" },
+        { "expr": "rate(scheduler_runs_dead_lettered_total[1m])", "legendFormat": "dead-lettered" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Leasing & reaping / sec",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "rate(scheduler_runs_leased_total[1m])", "legendFormat": "leased" },
+        { "expr": "rate(scheduler_runs_reaped_total[1m])", "legendFormat": "reaped" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Jobs submitted (total)",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        { "expr": "scheduler_jobs_submitted_total", "legendFormat": "submitted" }
+      ]
+    }
+  ]
+}
