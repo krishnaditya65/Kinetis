@@ -115,3 +115,52 @@ No locks, no coordinator — the DB is the arbiter.
 **Right now in the codebase**
 No threads running yet. Just data shapes and LeaseManager sitting idle.
 Threading starts in Step 12 (WorkerPool), wired together in Step 26 (LoopRunner).
+
+---
+
+## Retry Logic
+
+**BackoffCalculator** — pure math, no DB, no Spring.
+Delay for attempt `n` = random value in `[0, min(1hr, base * factor^n)]`.
+Full jitter is intentional: if 1000 jobs fail at the same time (downstream outage),
+fixed backoff makes them all retry together again. Jitter spreads them out.
+
+**RetryHandler** — single decision point shared by worker and reaper.
+```
+run failed →
+  AT_MOST_ONCE?       → markDeadLetter (never retry by design)
+  attempts exhausted? → markDeadLetter
+  otherwise           → backoff.nextDelay() → rescheduleForRetry
+```
+Both the worker (caught an exception) and the reaper (lease expired) call the same method.
+Centralising means they can never diverge on retry rules.
+
+---
+
+## Testing Checkpoints
+
+**After Step 1 (Gradle scaffold)**
+```bash
+cd Kinetis
+./gradlew :scheduler-core:dependencies   # resolves + downloads all deps
+./gradlew projects                        # lists all 4 modules
+```
+
+**After Steps 3–4 (DB migrations) — requires Postgres**
+```bash
+createdb kinetis_test
+psql kinetis_test -f scheduler-core/src/main/resources/db/migration/V1__core_schema.sql
+psql kinetis_test -f scheduler-core/src/main/resources/db/migration/V2__indexes.sql
+psql kinetis_test -c "\dt"   # should show: jobs, job_runs
+psql kinetis_test -c "\di"   # should show: idx_due, idx_expired, idx_job_runs_job_id
+```
+
+**After Step 6 (IdempotencyKeys) — pure Java, no deps**
+```bash
+javac -d /tmp scheduler-core/src/main/java/io/kinetis/core/idempotency/IdempotencyKeys.java
+```
+
+**After Step 8 (Mappers) — first full compile checkpoint**
+```bash
+./gradlew :scheduler-core:compileJava    # all scheduler-core classes compile cleanly
+```
