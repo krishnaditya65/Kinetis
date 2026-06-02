@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package io.kinetis.worker.v1;
+
+option java_package = "io.kinetis.worker.proto";
+option java_multiple_files = true;
+option java_outer_classname = "WorkerProto";
+
+// ---------------------------------------------------------------------------
+// WorkerService — the gRPC contract between the scheduler and remote workers.
+//
+// State transition ownership: the worker talks to Postgres directly via
+// LeaseManager for every state write. gRPC is purely the dispatch channel.
+// The fencing token travels on every message so the DB acceptance guard is
+// intact even when the scheduler and worker are separate processes.
+// ---------------------------------------------------------------------------
+service WorkerService {
+
+  // Scheduler → Worker: "go execute this leased run."
+  // The worker Acks immediately (fire-and-forget). Outcome is tracked via the
+  // DB — the worker writes SUCCEEDED/FAILED through LeaseManager, exactly as
+  // the in-process WorkerPool does.
+  rpc Dispatch(RunAssignment) returns (Ack);
+
+  // Worker → Scheduler: announce this worker's gRPC endpoint so the scheduler
+  // can dispatch to it. Workers call this on startup and periodically as a
+  // heartbeat; the scheduler removes stale registrations after a timeout.
+  rpc Register(WorkerRegistration) returns (Ack);
+}
+
+// Everything the worker needs to execute a run.
+// lease_token is the fencing token — the worker must supply it on every
+// LeaseManager call. A stale worker's old token is rejected at the DB.
+message RunAssignment {
+  string run_id          = 1;
+  string job_id          = 2;
+  string job_type        = 3;
+  string payload_json    = 4;
+  int32  attempt         = 5;
+  int64  lease_token     = 6;
+  string idempotency_key = 7;
+  int32  shard_id        = 8;
+}
+
+message Ack {
+  bool   accepted = 1;
+  string reason   = 2;  // non-empty when accepted=false
+}
+
+message WorkerRegistration {
+  string worker_id = 1;  // stable identity reused across restarts
+  string host      = 2;
+  int32  port      = 3;
+}
