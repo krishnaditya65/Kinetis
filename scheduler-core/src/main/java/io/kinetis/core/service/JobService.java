@@ -72,6 +72,11 @@ public class JobService {
         UUID jobId  = jobStore.insertIfAbsent(job);
         boolean created = jobId.equals(job.id());
 
+        // Persist callback URL only for newly created jobs (not deduplicated ones)
+        if (created && cmd.callbackUrl() != null && !cmd.callbackUrl().isBlank()) {
+            jobStore.setCallbackUrl(jobId, cmd.callbackUrl());
+        }
+
         if (!created) {
             // Deduplicated: return ids of the already-existing job and its first run.
             List<JobRun> existing = runStore.findByJobId(jobId);

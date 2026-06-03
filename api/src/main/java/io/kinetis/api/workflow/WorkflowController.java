@@ -50,7 +50,7 @@ public class WorkflowController {
         FailurePolicy policy = req.onFailure() == null ? FailurePolicy.FAIL_FAST :
                 FailurePolicy.valueOf(req.onFailure().toUpperCase());
 
-        WorkflowSubmission submission = workflowService.submit(nodes, edges, policy);
+        WorkflowSubmission submission = workflowService.submit(nodes, edges, policy, req.callbackUrl());
 
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                 "workflowId", submission.workflowId(),

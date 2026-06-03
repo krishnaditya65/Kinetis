@@ -18,10 +18,14 @@ public class WorkflowStore {
     }
 
     public void insertWorkflow(UUID id, FailurePolicy policy) {
+        insertWorkflow(id, policy, null);
+    }
+
+    public void insertWorkflow(UUID id, FailurePolicy policy, String callbackUrl) {
         jdbc.update("""
-                INSERT INTO workflows (id, on_failure, state, created_at)
-                VALUES (?, ?, 'RUNNING', now())
-                """, id, policy.name());
+                INSERT INTO workflows (id, on_failure, state, callback_url, created_at)
+                VALUES (?, ?, 'RUNNING', ?, now())
+                """, id, policy.name(), callbackUrl);
     }
 
     /** Record a dependency: {@code runId} depends on {@code upstreamRunId}. */

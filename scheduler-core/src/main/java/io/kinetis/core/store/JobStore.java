@@ -53,6 +53,18 @@ public class JobStore {
         return rows.stream().findFirst();
     }
 
+    /** Retrieve the callback URL for a job, or null if not set. */
+    public String findCallbackUrl(UUID jobId) {
+        List<String> rows = jdbc.query(
+                "SELECT callback_url FROM jobs WHERE id = ?",
+                (rs, r) -> rs.getString(1), jobId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    public void setCallbackUrl(UUID jobId, String callbackUrl) {
+        jdbc.update("UPDATE jobs SET callback_url = ? WHERE id = ?", callbackUrl, jobId);
+    }
+
     static PGobject jsonb(String json) {
         PGobject obj = new PGobject();
         obj.setType("jsonb");

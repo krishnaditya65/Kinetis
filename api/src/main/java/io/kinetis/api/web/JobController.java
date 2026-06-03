@@ -57,7 +57,8 @@ public class JobController {
                 req.misfirePolicy(),
                 retryPolicy(req),
                 req.priority() != null ? req.priority() : 0,
-                req.tenantId());
+                req.tenantId(),
+                req.callbackUrl());
 
         JobSubmission submission = jobService.submit(cmd);
         if (submission.created()) metrics.onSubmitted();

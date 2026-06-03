@@ -23,6 +23,8 @@ public record SubmitJobRequest(
         Long backoffBaseMs,
         Double backoffFactor,
         Integer priority,
-        String tenantId
+        String tenantId,
+        /** Optional URL to POST when this job reaches a terminal state. */
+        String callbackUrl
 ) {
 }

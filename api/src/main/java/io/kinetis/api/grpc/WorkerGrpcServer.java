@@ -64,6 +64,9 @@ public class WorkerGrpcServer extends WorkerServiceGrpc.WorkerServiceImplBase {
                 return t;
             });
 
+    /** Run IDs currently executing — used for the single batch heartbeat call. */
+    private final java.util.Set<UUID> activeRunIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     private Server grpcServer;
 
     public WorkerGrpcServer(int port, String workerId, String schedulerHost, int schedulerPort,
@@ -83,6 +86,11 @@ public class WorkerGrpcServer extends WorkerServiceGrpc.WorkerServiceImplBase {
         this.mapper            = mapper;
         this.leaseTtl          = leaseTtl;
         this.heartbeatInterval = heartbeatInterval;
+
+        // Pool-wide batch heartbeat — one DB call for all active runs per interval.
+        heartbeatScheduler.scheduleAtFixedRate(
+                this::batchHeartbeat,
+                heartbeatInterval.toMillis(), heartbeatInterval.toMillis(), TimeUnit.MILLISECONDS);
     }
 
     @PostConstruct
@@ -151,9 +159,7 @@ public class WorkerGrpcServer extends WorkerServiceGrpc.WorkerServiceImplBase {
             return;
         }
 
-        ScheduledFuture<?> hb = heartbeatScheduler.scheduleAtFixedRate(
-                () -> safeHeartbeat(runId, token),
-                heartbeatInterval.toMillis(), heartbeatInterval.toMillis(), TimeUnit.MILLISECONDS);
+        activeRunIds.add(runId);
         try {
             JsonNode payload = mapper.readTree(
                     req.getPayloadJson().isBlank() ? "{}" : req.getPayloadJson());
@@ -166,7 +172,7 @@ public class WorkerGrpcServer extends WorkerServiceGrpc.WorkerServiceImplBase {
         } catch (Throwable t) {
             failOrRetry(runId, job, req, token, describe(t));
         } finally {
-            hb.cancel(true);
+            activeRunIds.remove(runId);
         }
     }
 
@@ -182,11 +188,13 @@ public class WorkerGrpcServer extends WorkerServiceGrpc.WorkerServiceImplBase {
         log.debug("run {} failed (retry={}): {}", runId, retried, error);
     }
 
-    private void safeHeartbeat(UUID runId, long token) {
+    private void batchHeartbeat() {
+        java.util.Set<UUID> snapshot = java.util.Set.copyOf(activeRunIds);
+        if (snapshot.isEmpty()) return;
         try {
-            leaseManager.heartbeat(runId, token, leaseTtl);
-        } catch (Exception e) {
-            log.debug("heartbeat failed for run {}", runId, e);
+            leaseManager.batchHeartbeat(snapshot, leaseTtl);
+        } catch (RuntimeException e) {
+            log.debug("batch heartbeat failed", e);
         }
     }
 

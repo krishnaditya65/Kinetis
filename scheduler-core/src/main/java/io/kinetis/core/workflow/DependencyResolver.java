@@ -1,6 +1,7 @@
 package io.kinetis.core.workflow;
 
 import io.kinetis.core.model.JobState;
+import io.kinetis.core.webhook.WebhookDispatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -33,10 +34,17 @@ public class DependencyResolver {
 
     private final WorkflowStore store;
     private final JdbcTemplate jdbc;
+    private final WebhookDispatcher webhookDispatcher;
 
     public DependencyResolver(WorkflowStore store, JdbcTemplate jdbc) {
-        this.store = store;
-        this.jdbc  = jdbc;
+        this(store, jdbc, new WebhookDispatcher());
+    }
+
+    public DependencyResolver(WorkflowStore store, JdbcTemplate jdbc,
+                               WebhookDispatcher webhookDispatcher) {
+        this.store              = store;
+        this.jdbc               = jdbc;
+        this.webhookDispatcher  = webhookDispatcher;
     }
 
     /** Called after a run has been marked SUCCEEDED. */
@@ -134,5 +142,13 @@ public class DependencyResolver {
 
         store.updateWorkflowState(workflowId, newState);
         log.info("workflow {} reached terminal state: {}", workflowId, newState);
+
+        // Fire webhook if the workflow has one configured
+        String cbUrl = jdbc.query(
+                "SELECT callback_url FROM workflows WHERE id = ?",
+                rs -> rs.next() ? rs.getString(1) : null,
+                workflowId);
+        String event = newState == WorkflowState.SUCCEEDED ? "workflow.succeeded" : "workflow.failed";
+        webhookDispatcher.fire(cbUrl, event, workflowId.toString(), newState.name());
     }
 }

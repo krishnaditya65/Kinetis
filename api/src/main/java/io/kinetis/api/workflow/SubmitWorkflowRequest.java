@@ -26,5 +26,7 @@ import java.util.List;
 public record SubmitWorkflowRequest(
         @NotEmpty @Valid List<DagNodeRequest> nodes,
         List<DagEdgeRequest> edges,
-        String onFailure
+        String onFailure,
+        /** Optional URL to POST when the workflow reaches a terminal state. */
+        String callbackUrl
 ) {}

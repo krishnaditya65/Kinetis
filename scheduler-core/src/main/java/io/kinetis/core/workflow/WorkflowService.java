@@ -59,10 +59,16 @@ public class WorkflowService {
     @Transactional
     public WorkflowSubmission submit(List<DagNode> nodes, List<DagEdge> edges,
                                       FailurePolicy policy) {
+        return submit(nodes, edges, policy, null);
+    }
+
+    @Transactional
+    public WorkflowSubmission submit(List<DagNode> nodes, List<DagEdge> edges,
+                                      FailurePolicy policy, String callbackUrl) {
         DagValidator.validate(nodes, edges);
 
         UUID workflowId = UUID.randomUUID();
-        workflowStore.insertWorkflow(workflowId, policy);
+        workflowStore.insertWorkflow(workflowId, policy, callbackUrl);
 
         // Compute which nodes are roots (no incoming edges)
         Set<String> hasIncoming = edges.stream().map(DagEdge::to).collect(Collectors.toSet());

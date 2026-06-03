@@ -34,8 +34,13 @@ import java.util.function.Consumer;
  *       and avoid split votes (Raft §5.2).</li>
  * </ul>
  *
- * <h2>Known gaps (deferred to Phase 6)</h2>
- * Persistent state (currentTerm, votedFor) and joint-consensus membership changes.
+ * <h2>Persistence</h2>
+ * {@code currentTerm} and {@code votedFor} are flushed via {@link RaftPersistence} before
+ * responding to any RPC that changes them (§5.4). This prevents a restarted node from voting
+ * twice in the same term or accepting a stale leader.
+ *
+ * <h2>Known gaps</h2>
+ * Log persistence and joint-consensus membership changes are still deferred.
  *
  * @see <a href="https://raft.github.io/raft.pdf">Raft paper — Ongaro & Ousterhout (2014)</a>
  */
@@ -43,10 +48,12 @@ public class RaftNode {
 
     private static final Logger log = LoggerFactory.getLogger(RaftNode.class);
 
-    // Persistent state (non-durable in this implementation — Phase 6 deferred)
-    private long currentTerm = 0;
-    private String votedFor  = null;
+    // Persistent state — flushed to RaftPersistence before responding to term-changing RPCs
+    private long currentTerm;
+    private String votedFor;
     private final RaftLog raftLog = new RaftLog();
+
+    private final RaftPersistence persistence;
 
     // Volatile state
     private RaftState state       = RaftState.FOLLOWER;
@@ -74,8 +81,17 @@ public class RaftNode {
     private final AtomicLong votesReceived = new AtomicLong(0);
     private final List<Consumer<Boolean>> leaderChangeListeners = new ArrayList<>();
 
+    /** Convenience constructor using in-memory (non-durable) persistence — for tests. */
     public RaftNode(String nodeId, Set<String> peers, RaftRpc rpc, RaftStateMachine stateMachine,
                     long electionTimeoutMinMs, long electionTimeoutMaxMs, long heartbeatIntervalMs) {
+        this(nodeId, peers, rpc, stateMachine, electionTimeoutMinMs, electionTimeoutMaxMs,
+                heartbeatIntervalMs, new InMemoryRaftPersistence());
+    }
+
+    /** Full constructor with pluggable persistence. Use {@link FileRaftPersistence} in production. */
+    public RaftNode(String nodeId, Set<String> peers, RaftRpc rpc, RaftStateMachine stateMachine,
+                    long electionTimeoutMinMs, long electionTimeoutMaxMs, long heartbeatIntervalMs,
+                    RaftPersistence persistence) {
         this.nodeId               = nodeId;
         this.peers                = Set.copyOf(peers);
         this.rpc                  = rpc;
@@ -83,6 +99,13 @@ public class RaftNode {
         this.electionTimeoutMinMs = electionTimeoutMinMs;
         this.electionTimeoutMaxMs = electionTimeoutMaxMs;
         this.heartbeatIntervalMs  = heartbeatIntervalMs;
+        this.persistence          = persistence;
+
+        // Restore persisted state on startup
+        RaftPersistence.PersistedState saved = persistence.load();
+        this.currentTerm = saved.currentTerm();
+        this.votedFor    = saved.votedFor();
+        log.debug("[{}] restored persistent state: term={} votedFor={}", nodeId, currentTerm, votedFor);
         this.mainExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "raft-main-" + nodeId);
             t.setDaemon(true);
@@ -152,12 +175,18 @@ public class RaftNode {
 
     // ---- Core algorithm — all methods below run on mainExecutor ------------
 
+    /** Flush currentTerm + votedFor before responding to any RPC that changes them (§5.4). */
+    private void persistState() {
+        persistence.save(currentTerm, votedFor);
+    }
+
     private void electionTimeout() {
         if (state == RaftState.LEADER) return;
         log.info("[{}] election timeout → CANDIDATE term={}", nodeId, currentTerm + 1);
         transitionTo(RaftState.CANDIDATE);
         currentTerm++;
         votedFor = nodeId;
+        persistState();
         votesReceived.set(1);
 
         long lastIndex = raftLog.lastIndex();
@@ -248,6 +277,7 @@ public class RaftNode {
                 && isAtLeastAsUpToDate(req.lastLogIndex(), req.lastLogTerm());
         if (canVote) {
             votedFor = req.candidateId();
+            persistState(); // must persist before responding (§5.4)
             resetElectionTimer();
             return new RequestVoteResponse(currentTerm, true);
         }
@@ -286,6 +316,7 @@ public class RaftNode {
         boolean wasLeader = (state == RaftState.LEADER);
         currentTerm   = newTerm;
         votedFor      = null;
+        persistState(); // term changed — must persist before any response
         currentLeader = leaderId;
         transitionTo(RaftState.FOLLOWER);
         if (wasLeader) leaderChangeListeners.forEach(l -> l.accept(false));

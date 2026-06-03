@@ -163,6 +163,41 @@ public class LeaseManager {
     }
 
     /**
+     * Extend leases for a batch of active runs in a single DB round-trip.
+     *
+     * <p>Unlike the per-run {@link #heartbeat}, this does <em>not</em> check the fencing token —
+     * it updates all rows in LEASED or RUNNING state. This is safe because:
+     * <ol>
+     *   <li>We only touch rows in active states; SCHEDULED/terminal rows are unaffected.</li>
+     *   <li>If a run was reclaimed by the reaper and re-claimed by a new worker, extending its
+     *       {@code lease_expires_at} is harmless — the old worker still carries a stale
+     *       {@code leaseToken} and will be fenced on its next state-mutating write.</li>
+     * </ol>
+     * Designed to replace per-run {@link ScheduledFuture} heartbeats in {@link WorkerPool},
+     * reducing heartbeat DB calls from O(active runs) to O(1) per interval.
+     *
+     * @return number of rows updated
+     */
+    public int batchHeartbeat(Set<UUID> runIds, Duration leaseTtl) {
+        if (runIds == null || runIds.isEmpty()) return 0;
+        return jdbc.query(
+                (Connection conn) -> {
+                    Array pgIds = conn.createArrayOf("uuid", runIds.toArray(UUID[]::new));
+                    var ps = conn.prepareStatement("""
+                            UPDATE job_runs
+                            SET lease_expires_at  = now() + make_interval(secs => ?),
+                                last_heartbeat_at = now()
+                            WHERE id = ANY(?)
+                              AND state IN ('LEASED', 'RUNNING')
+                            """);
+                    ps.setInt(1, (int) leaseTtl.toSeconds());
+                    ps.setArray(2, pgIds);
+                    return ps;
+                },
+                rs -> rs.next() ? rs.getInt(1) : 0);
+    }
+
+    /**
      * Find runs whose lease has expired in shards owned by this node. Scoping to owned shards
      * means each node reaps only its own partition — no two nodes race to reclaim the same lease.
      */
