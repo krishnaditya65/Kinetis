@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <title>Kinetis — Workflow DAG</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <link rel="stylesheet" th:href="@{/css/kinetis.css}">
+  <style>
+    #dag { width: 100%; height: 480px; border: 1px solid #e0e0e0; border-radius: 8px; }
+    .dag-node circle { stroke-width: 2; }
+    .dag-node text { font-size: 12px; pointer-events: none; }
+    .dag-link { stroke: #999; stroke-opacity: 0.6; fill: none; }
+    .dag-link marker path { fill: #999; }
+    .SUCCEEDED circle { fill: #4caf50; stroke: #388e3c; }
+    .SCHEDULED circle  { fill: #2196f3; stroke: #1565c0; }
+    .RUNNING circle    { fill: #ff9800; stroke: #e65100; }
+    .PENDING_DEPS circle { fill: #9e9e9e; stroke: #616161; }
+    .FAILED circle     { fill: #f44336; stroke: #b71c1c; }
+    .DEAD_LETTER circle { fill: #b71c1c; stroke: #7f0000; }
+    .CANCELLED circle  { fill: #607d8b; stroke: #37474f; }
+    .SKIPPED circle    { fill: #eeeeee; stroke: #bdbdbd; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>⚡ Kinetis</h1>
+  <nav><a th:href="@{/ui/jobs}">← Job Browser</a></nav>
+</header>
+<main>
+  <h2>Workflow <span th:text="${workflow.id()}"></span></h2>
+  <dl class="meta">
+    <dt>State</dt>      <dd><span th:text="${workflow.state()}"
+                                  th:classappend="${'badge badge-' + workflow.state()}"></span></dd>
+    <dt>On failure</dt> <dd th:text="${workflow.failurePolicy()}"></dd>
+    <dt>Created</dt>    <dd th:text="${workflow.createdAt()}"></dd>
+  </dl>
+
+  <!-- DAG canvas — rendered by D3 from inline JSON -->
+  <div id="dag"
+       hx-get="/ui/workflows"
+       hx-trigger="every 4s"
+       hx-target="body"
+       hx-swap="none">
+  </div>
+
+  <!-- Pass data to D3 as JSON in a script tag -->
+  <script th:inline="javascript">
+    const nodes = /*[[${nodes}]]*/ [];
+    const edges = /*[[${edges}]]*/ [];
+
+    const nodeMap = {};
+    const d3nodes = nodes.map(n => {
+      const obj = { id: n.nodeId, runId: n.runId, state: n.state, label: n.nodeId };
+      nodeMap[n.runId] = obj;
+      return obj;
+    });
+    const d3links = edges.map(e => ({
+      source: String(e.from_node),
+      target: String(e.to_node)
+    }));
+
+    const width = document.getElementById('dag').clientWidth;
+    const height = 480;
+
+    const svg = d3.select('#dag').append('svg')
+        .attr('width', width).attr('height', height);
+
+    svg.append('defs').append('marker')
+        .attr('id', 'arrow').attr('viewBox', '0 -5 10 10')
+        .attr('refX', 20).attr('refY', 0)
+        .attr('markerWidth', 6).attr('markerHeight', 6)
+        .attr('orient', 'auto')
+        .append('path').attr('d', 'M0,-5L10,0L0,5');
+
+    const simulation = d3.forceSimulation(d3nodes)
+        .force('link', d3.forceLink(d3links).id(d => d.id).distance(120))
+        .force('charge', d3.forceManyBody().strength(-300))
+        .force('center', d3.forceCenter(width / 2, height / 2));
+
+    const link = svg.append('g').selectAll('line')
+        .data(d3links).enter().append('line')
+        .attr('class', 'dag-link')
+        .attr('marker-end', 'url(#arrow)');
+
+    const node = svg.append('g').selectAll('g')
+        .data(d3nodes).enter().append('g')
+        .attr('class', d => 'dag-node ' + d.state)
+        .call(d3.drag()
+            .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+            .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y; })
+            .on('end',   (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+    node.append('circle').attr('r', 18);
+    node.append('text').attr('dy', '0.35em').attr('text-anchor', 'middle').text(d => d.label);
+    node.append('title').text(d => d.id + '\n' + d.state);
+
+    simulation.on('tick', () => {
+      link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+      node.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
+  </script>
+
+  <!-- Node table below the DAG -->
+  <h3>Nodes</h3>
+  <table>
+    <thead><tr><th>Node</th><th>Run ID</th><th>State</th><th>Job ID</th></tr></thead>
+    <tbody>
+      <tr th:each="n : ${nodes}">
+        <td th:text="${n.nodeId()}"></td>
+        <td th:text="${n.runId()}"></td>
+        <td><span th:text="${n.state()}" th:classappend="${'badge badge-' + n.state()}"></span></td>
+        <td th:text="${n.jobId()}"></td>
+      </tr>
+    </tbody>
+  </table>
+</main>
+</body>
+</html>

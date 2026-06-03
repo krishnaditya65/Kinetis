@@ -2,8 +2,8 @@ plugins {
     java
     id("org.springframework.boot") version "3.3.5" apply false
     id("io.spring.dependency-management") version "1.1.6" apply false
-    // Protobuf plugin declared here so the version is managed centrally; applied in api/ only.
     id("com.google.protobuf") version "0.9.4" apply false
+    id("me.champeau.jmh") version "0.7.2" apply false
 }
 
 allprojects {

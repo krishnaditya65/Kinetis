@@ -55,6 +55,11 @@ scheduler:
 app:
   role: ${APP_ROLE:standalone}
 
+# Authentication — disabled by default for dev/single-node; enable in production.
+scheduler:
+  auth:
+    enabled: ${SCHED_AUTH_ENABLED:false}
+
 logging:
   level:
     io.kinetis: ${LOG_LEVEL:INFO}

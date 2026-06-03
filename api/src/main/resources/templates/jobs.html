@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kinetis — Job Browser</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <link rel="stylesheet" th:href="@{/css/kinetis.css}">
+</head>
+<body>
+<header>
+  <h1>⚡ Kinetis</h1>
+  <nav>
+    <a th:href="@{/ui/jobs}" class="active">Jobs</a>
+    <a href="/actuator/health" target="_blank">Health</a>
+    <a href="/actuator/prometheus" target="_blank">Metrics</a>
+  </nav>
+</header>
+
+<main>
+  <!-- Filter bar -->
+  <section class="filters">
+    <form method="get" th:action="@{/ui/jobs}">
+      <label>State
+        <select name="state">
+          <option value="">All</option>
+          <option th:each="s : ${states}" th:value="${s}" th:text="${s}"
+                  th:selected="${filter.state == s.name()}"></option>
+        </select>
+      </label>
+      <label>Job type
+        <input type="text" name="jobType" th:value="${filter.jobType}" placeholder="e.g. noop"/>
+      </label>
+      <label>Tenant
+        <input type="text" name="tenantId" th:value="${filter.tenantId}" placeholder="tenant-id"/>
+      </label>
+      <button type="submit">Filter</button>
+      <a th:href="@{/ui/jobs}">Clear</a>
+    </form>
+  </section>
+
+  <!-- Auto-refresh every 3s with HTMX -->
+  <section id="runs-table"
+           hx-get="/ui/jobs"
+           hx-trigger="every 3s"
+           hx-target="#runs-table"
+           hx-swap="outerHTML">
+
+    <table>
+      <thead>
+        <tr>
+          <th>Run ID</th><th>Job Type</th><th>State</th>
+          <th>Attempt</th><th>Priority</th><th>Tenant</th>
+          <th>Scheduled For</th><th>Started</th><th>Finished</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr th:if="${#lists.isEmpty(runs)}">
+          <td colspan="9" class="empty">No runs found.</td>
+        </tr>
+        <tr th:each="r : ${runs}" th:classappend="${'row-' + r.state}">
+          <td><a th:href="@{/ui/jobs/{jobId}(jobId=${r.job_id})}"
+                 th:text="${#strings.substring(r.id.toString(), 0, 8) + '…'}"></a></td>
+          <td th:text="${r.job_type}"></td>
+          <td><span th:text="${r.state}" th:classappend="${'badge badge-' + r.state}"></span></td>
+          <td th:text="${r.attempt}"></td>
+          <td th:text="${r.priority}"></td>
+          <td th:text="${r.tenant_id ?: '-'}"></td>
+          <td th:text="${r.scheduled_for}"></td>
+          <td th:text="${r.started_at ?: '-'}"></td>
+          <td th:text="${r.finished_at ?: '-'}"></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="pagination">
+      <a th:if="${page > 0}"
+         th:href="@{/ui/jobs(state=${filter.state},jobType=${filter.jobType},tenantId=${filter.tenantId},page=${page - 1})}">
+        ← Prev
+      </a>
+      <span th:text="'Page ' + ${page + 1}"></span>
+      <a th:if="${hasMore}"
+         th:href="@{/ui/jobs(state=${filter.state},jobType=${filter.jobType},tenantId=${filter.tenantId},page=${page + 1})}">
+        Next →
+      </a>
+    </div>
+  </section>
+</main>
+</body>
+</html>

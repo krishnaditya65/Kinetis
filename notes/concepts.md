@@ -361,3 +361,60 @@ docker exec -it <container> psql -U scheduler -c "DROP DATABASE kinetis_test;"
 ./gradlew :scheduler-core:compileJava   # ❌ until Steps 16-18 (cron) + Step 21 (sharding)
 ./gradlew :worker:compileJava           # ❌ depends on scheduler-core
 ```
+
+---
+
+## DAG Workflows (Phase 5)
+
+A workflow groups job_runs into a directed acyclic graph. Nodes are ordinary job_runs;
+edges express "run B only after A succeeds".
+
+**Key states added:**
+- `PENDING_DEPS` — node is waiting for its upstream dependencies to succeed
+- `SKIPPED` — upstream failed and the SKIP_DOWNSTREAM policy applied
+
+**Failure policies (per-workflow):**
+- `FAIL_FAST` — cancel all PENDING_DEPS/SCHEDULED nodes immediately on any failure
+- `WAIT` — do nothing; the failed branch's dependents stay PENDING_DEPS forever
+- `SKIP_DOWNSTREAM` — mark direct dependents SKIPPED, continue rest of DAG
+
+**DependencyResolver** — called by WorkflowAdvancer polling loop every 500ms:
+- On success: count pending upstreams of each downstream. If 0 → promote to SCHEDULED.
+- On failure: apply the workflow's FailurePolicy.
+- Recompute aggregate workflow state after every node transition.
+
+**WorkflowAdvancer** — separate polling loop, same cadence as SchedulerLoop.
+Does not modify WorkerPool — keeps execution path clean.
+
+**WorkflowBuilder DSL:**
+```java
+WorkflowBuilder.create()
+    .node("extract",   "etl.extract",   "{\"source\":\"s3://...\"}")
+    .node("transform", "etl.transform", "{}")
+    .node("load",      "etl.load",      "{}")
+    .chain("extract", "transform", "load")   // sequential
+    .submit(workflowService);
+```
+
+---
+
+## Production Hardening (Phase 6)
+
+**ChaosTest** — simulates crashes by forcing `lease_expires_at` into the past while
+runs are LEASED/RUNNING. Asserts: all runs reach terminal state, no phantom double-completions.
+Three scenarios: single crash, concurrent lease expiry, random poisoning under load.
+
+**API key auth** — `X-Api-Key` header, validated against SHA-256 hash in `api_keys` table.
+Disabled by default (`scheduler.auth.enabled=false`). Enable via `SCHED_AUTH_ENABLED=true`.
+
+**Audit log** — Spring AOP aspect fires async `@AfterReturning` on every write endpoint.
+Persists actor/action/resource_id/detail to `audit_events` table. Failures are logged,
+never propagated — audit issues must never break the primary API path.
+
+**JMH benchmarks** — microbenchmarks for `claimDue`, `markSucceeded`, `heartbeat`.
+Run with `./gradlew :scheduler-core:jmh`. Requires `BENCHMARK_DB_URL` env var.
+
+**Web UI** — HTMX + Thymeleaf. No separate frontend build.
+- `/ui/jobs` — job browser with live HTMX polling every 3s
+- `/ui/jobs/{jobId}` — run history for a job
+- `/ui/workflows/{workflowId}` — DAG visualiser using D3.js force layout

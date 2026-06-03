@@ -1,4 +1,7 @@
 // scheduler-core: the durable primitive. Framework-light — plain Java + Spring JDBC.
+plugins {
+    id("me.champeau.jmh") version "0.7.2"
+}
 dependencies {
     implementation(project(":raft"))
     implementation("org.springframework:spring-jdbc")

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <title>Kinetis — Job Detail</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <link rel="stylesheet" th:href="@{/css/kinetis.css}">
+</head>
+<body>
+<header>
+  <h1>⚡ Kinetis</h1>
+  <nav><a th:href="@{/ui/jobs}">← Job Browser</a></nav>
+</header>
+<main>
+  <h2>Job <span th:text="${job.id()}"></span></h2>
+  <dl class="meta">
+    <dt>Type</dt>     <dd th:text="${job.jobType()}"></dd>
+    <dt>Delivery</dt> <dd th:text="${job.deliveryPolicy()}"></dd>
+    <dt>Cron</dt>     <dd th:text="${job.cronExpr() ?: 'one-off'}"></dd>
+    <dt>Created</dt>  <dd th:text="${job.createdAt()}"></dd>
+  </dl>
+
+  <h3>Runs</h3>
+  <table id="runs"
+         hx-get="/ui/jobs"
+         hx-trigger="every 5s"
+         hx-target="#runs"
+         hx-swap="outerHTML">
+    <thead>
+      <tr><th>Run ID</th><th>State</th><th>Attempt</th>
+          <th>Scheduled For</th><th>Started</th><th>Finished</th><th>Error</th></tr>
+    </thead>
+    <tbody>
+      <tr th:each="r : ${runs}" th:classappend="${'row-' + r.state()}">
+        <td th:text="${r.id()}"></td>
+        <td><span th:text="${r.state()}" th:classappend="${'badge badge-' + r.state()}"></span></td>
+        <td th:text="${r.attempt()}"></td>
+        <td th:text="${r.scheduledFor()}"></td>
+        <td th:text="${r.startedAt() ?: '-'}"></td>
+        <td th:text="${r.finishedAt() ?: '-'}"></td>
+        <td th:text="${r.lastError() ?: '-'}"></td>
+      </tr>
+    </tbody>
+  </table>
+</main>
+</body>
+</html>
