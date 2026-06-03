@@ -4,6 +4,7 @@ import io.kinetis.core.cron.CronScheduler;
 import io.kinetis.core.queue.RateLimiter;
 import io.kinetis.core.reaper.ReaperLoop;
 import io.kinetis.core.scheduler.SchedulerLoop;
+import io.kinetis.core.workflow.WorkflowAdvancer;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -33,6 +34,7 @@ public class LoopRunner implements AutoCloseable {
     private final ReaperLoop reaperLoop;
     private final CronScheduler cronScheduler;
     private final RateLimiter rateLimiter;
+    private final WorkflowAdvancer workflowAdvancer;
     private final SchedulerProperties props;
     private final String role;
 
@@ -44,14 +46,16 @@ public class LoopRunner implements AutoCloseable {
 
     public LoopRunner(SchedulerLoop schedulerLoop, ReaperLoop reaperLoop,
                       CronScheduler cronScheduler, RateLimiter rateLimiter,
+                      WorkflowAdvancer workflowAdvancer,
                       SchedulerProperties props,
                       @Value("${app.role:standalone}") String role) {
-        this.schedulerLoop = schedulerLoop;
-        this.reaperLoop    = reaperLoop;
-        this.cronScheduler = cronScheduler;
-        this.rateLimiter   = rateLimiter;
-        this.props         = props;
-        this.role          = role;
+        this.schedulerLoop    = schedulerLoop;
+        this.reaperLoop       = reaperLoop;
+        this.cronScheduler    = cronScheduler;
+        this.rateLimiter      = rateLimiter;
+        this.workflowAdvancer = workflowAdvancer;
+        this.props            = props;
+        this.role             = role;
     }
 
     @PostConstruct
@@ -65,10 +69,11 @@ public class LoopRunner implements AutoCloseable {
         long cronMs   = props.getCronInterval().toMillis();
         long refillMs = props.getRateLimitRefillInterval().toMillis();
 
-        executor.scheduleWithFixedDelay(() -> guard("scheduler", schedulerLoop::tick),    pollMs,   pollMs,   TimeUnit.MILLISECONDS);
-        executor.scheduleWithFixedDelay(() -> guard("reaper",    reaperLoop::tick),       reapMs,   reapMs,   TimeUnit.MILLISECONDS);
-        executor.scheduleWithFixedDelay(() -> guard("cron",      cronScheduler::tick),    cronMs,   cronMs,   TimeUnit.MILLISECONDS);
-        executor.scheduleWithFixedDelay(() -> guard("refill",    rateLimiter::refillAll), refillMs, refillMs, TimeUnit.MILLISECONDS);
+        executor.scheduleWithFixedDelay(() -> guard("scheduler", schedulerLoop::tick),        pollMs,   pollMs,   TimeUnit.MILLISECONDS);
+        executor.scheduleWithFixedDelay(() -> guard("reaper",    reaperLoop::tick),           reapMs,   reapMs,   TimeUnit.MILLISECONDS);
+        executor.scheduleWithFixedDelay(() -> guard("cron",      cronScheduler::tick),        cronMs,   cronMs,   TimeUnit.MILLISECONDS);
+        executor.scheduleWithFixedDelay(() -> guard("refill",    rateLimiter::refillAll),     refillMs, refillMs, TimeUnit.MILLISECONDS);
+        executor.scheduleWithFixedDelay(() -> guard("workflow",  workflowAdvancer::tick),     pollMs,   pollMs,   TimeUnit.MILLISECONDS);
 
         log.info("LoopRunner started (role={}): poll={}ms reaper={}ms cron={}ms refill={}ms",
                 role, pollMs, reapMs, cronMs, refillMs);

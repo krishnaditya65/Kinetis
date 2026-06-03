@@ -11,6 +11,10 @@ package io.kinetis.core.model;
  *       └──────────────── FAILED ──┬── retries left ──▶ SCHEDULED
  *                                  └── exhausted ─────▶ DEAD_LETTER
  *   any non-terminal ──cancel──▶ CANCELLED
+ *
+ *   DAG nodes:
+ *   PENDING_DEPS ──all upstreams succeeded──▶ SCHEDULED
+ *   PENDING_DEPS ──upstream failed + SKIP_DOWNSTREAM──▶ SKIPPED
  * </pre>
  */
 public enum JobState {
@@ -20,9 +24,17 @@ public enum JobState {
     SUCCEEDED,
     FAILED,
     DEAD_LETTER,
-    CANCELLED;
+    CANCELLED,
+    /** DAG node waiting for upstream dependencies to complete. */
+    PENDING_DEPS,
+    /** DAG node skipped because an upstream failed under SKIP_DOWNSTREAM policy. */
+    SKIPPED;
 
     public boolean isTerminal() {
-        return this == SUCCEEDED || this == DEAD_LETTER || this == CANCELLED;
+        return this == SUCCEEDED || this == DEAD_LETTER || this == CANCELLED || this == SKIPPED;
+    }
+
+    public boolean isActive() {
+        return this == SCHEDULED || this == LEASED || this == RUNNING || this == PENDING_DEPS;
     }
 }

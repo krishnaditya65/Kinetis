@@ -3,6 +3,10 @@ package io.kinetis.api.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kinetis.core.cron.CronScheduler;
 import io.kinetis.core.lease.LeaseManager;
+import io.kinetis.core.workflow.DependencyResolver;
+import io.kinetis.core.workflow.WorkflowAdvancer;
+import io.kinetis.core.workflow.WorkflowService;
+import io.kinetis.core.workflow.WorkflowStore;
 import io.kinetis.core.metrics.SchedulerMetrics;
 import io.kinetis.core.queue.FairShareDispatcher;
 import io.kinetis.core.queue.RateLimiter;
@@ -148,6 +152,32 @@ public class CoreConfig {
                                        ShardOwnershipProvider shardOwnership,
                                        Clock clock, SchedulerProperties props) {
         return new CronScheduler(jdbc, runStore, metrics, shardOwnership, clock, props.getBatchSize());
+    }
+
+    // ---- workflow beans ----
+
+    @Bean
+    public WorkflowStore workflowStore(JdbcTemplate jdbc) {
+        return new WorkflowStore(jdbc);
+    }
+
+    @Bean
+    public DependencyResolver dependencyResolver(WorkflowStore workflowStore, JdbcTemplate jdbc) {
+        return new DependencyResolver(workflowStore, jdbc);
+    }
+
+    @Bean
+    public WorkflowAdvancer workflowAdvancer(DependencyResolver resolver, JdbcTemplate jdbc,
+                                              SchedulerProperties props) {
+        return new WorkflowAdvancer(resolver, jdbc, props.getBatchSize());
+    }
+
+    @Bean
+    public WorkflowService workflowService(WorkflowStore workflowStore, JobStore jobStore,
+                                            JobRunStore runStore, JdbcTemplate jdbc,
+                                            Clock clock, SchedulerProperties props) {
+        return new WorkflowService(workflowStore, jobStore, runStore, jdbc,
+                clock, props.getTotalShards());
     }
 
     private static String resolveNodeId(SchedulerProperties props) {
