@@ -1,8 +1,11 @@
 package io.kinetis.api.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.kinetis.core.admin.ArchivalService;
+import io.kinetis.core.admin.MaintenanceFlag;
 import io.kinetis.core.cron.CronScheduler;
 import io.kinetis.core.lease.LeaseManager;
+import io.kinetis.core.output.JobRunOutputStore;
 import io.kinetis.core.workflow.DependencyResolver;
 import io.kinetis.core.workflow.WorkflowAdvancer;
 import io.kinetis.core.workflow.WorkflowService;
@@ -110,13 +113,20 @@ public class CoreConfig {
         return new FairShareDispatcher(delegate, rateLimiter, leaseManager, props.getBatchSize());
     }
 
+    @Bean
+    public JobRunOutputStore jobRunOutputStore(JdbcTemplate jdbc) {
+        return new JobRunOutputStore(jdbc);
+    }
+
     @Bean(destroyMethod = "close")
     public WorkerPool workerPool(JobStore jobStore, LeaseManager leases,
                                  HandlerRegistry registry, RetryHandler retryHandler,
                                  SchedulerMetrics metrics, ObjectMapper mapper,
+                                 JobRunOutputStore outputStore,
                                  SchedulerProperties props) {
         return new WorkerPool(jobStore, leases, registry, retryHandler, metrics, mapper,
-                props.getLeaseTtl(), props.getHeartbeatInterval());
+                props.getLeaseTtl(), props.getHeartbeatInterval(),
+                new io.kinetis.core.webhook.WebhookDispatcher(), outputStore);
     }
 
     @Bean public NoOpHandler noOpHandler()             { return new NoOpHandler(); }
@@ -152,6 +162,18 @@ public class CoreConfig {
                                        ShardOwnershipProvider shardOwnership,
                                        Clock clock, SchedulerProperties props) {
         return new CronScheduler(jdbc, runStore, metrics, shardOwnership, clock, props.getBatchSize());
+    }
+
+    // ---- admin beans ----
+
+    @Bean
+    public MaintenanceFlag maintenanceFlag(JdbcTemplate jdbc) {
+        return new MaintenanceFlag(jdbc);
+    }
+
+    @Bean
+    public ArchivalService archivalService(JdbcTemplate jdbc, SchedulerProperties props) {
+        return new ArchivalService(jdbc, props.getArchivalRetentionDays(), props.getReaperBatchSize());
     }
 
     // ---- workflow beans ----

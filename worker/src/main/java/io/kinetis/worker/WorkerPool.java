@@ -2,10 +2,12 @@ package io.kinetis.worker;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.kinetis.core.lease.LeaseManager;
 import io.kinetis.core.metrics.SchedulerMetrics;
 import io.kinetis.core.model.Job;
 import io.kinetis.core.model.JobRun;
+import io.kinetis.core.output.JobRunOutputStore;
 import io.kinetis.core.retry.RetryHandler;
 import io.kinetis.core.scheduler.RunDispatcher;
 import io.kinetis.core.store.JobStore;
@@ -50,6 +52,7 @@ public class WorkerPool implements RunDispatcher, AutoCloseable {
     private final ObjectMapper mapper;
     private final Duration leaseTtl;
     private final WebhookDispatcher webhookDispatcher;
+    private final JobRunOutputStore outputStore;
 
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ScheduledExecutorService heartbeatScheduler =
@@ -66,13 +69,13 @@ public class WorkerPool implements RunDispatcher, AutoCloseable {
                       RetryHandler retryHandler, SchedulerMetrics metrics, ObjectMapper mapper,
                       Duration leaseTtl, Duration heartbeatInterval) {
         this(jobStore, leases, registry, retryHandler, metrics, mapper, leaseTtl,
-             heartbeatInterval, new WebhookDispatcher());
+             heartbeatInterval, new WebhookDispatcher(), null);
     }
 
     public WorkerPool(JobStore jobStore, LeaseManager leases, HandlerRegistry registry,
                       RetryHandler retryHandler, SchedulerMetrics metrics, ObjectMapper mapper,
                       Duration leaseTtl, Duration heartbeatInterval,
-                      WebhookDispatcher webhookDispatcher) {
+                      WebhookDispatcher webhookDispatcher, JobRunOutputStore outputStore) {
         this.jobStore          = jobStore;
         this.leases            = leases;
         this.registry          = registry;
@@ -81,6 +84,7 @@ public class WorkerPool implements RunDispatcher, AutoCloseable {
         this.mapper            = mapper;
         this.leaseTtl          = leaseTtl;
         this.webhookDispatcher = webhookDispatcher;
+        this.outputStore       = outputStore;
 
         // Single pool-wide heartbeat — one DB call for all active runs per interval.
         heartbeatScheduler.scheduleAtFixedRate(
@@ -119,10 +123,33 @@ public class WorkerPool implements RunDispatcher, AutoCloseable {
             }
 
             JsonNode payload = mapper.readTree(job.payload() == null ? "{}" : job.payload());
+
+            // Fetch upstream outputs for workflow nodes (empty map for standalone jobs)
+            java.util.Map<String, JsonNode> upstreamOutputs = java.util.Map.of();
+            if (outputStore != null) {
+                var rawOutputs = outputStore.fetchUpstreamOutputs(run.id());
+                if (!rawOutputs.isEmpty()) {
+                    upstreamOutputs = new java.util.LinkedHashMap<>();
+                    for (var entry : rawOutputs.entrySet()) {
+                        try {
+                            upstreamOutputs.put(entry.getKey(), mapper.readTree(entry.getValue()));
+                        } catch (Exception e) {
+                            log.debug("failed to parse upstream output for node {}", entry.getKey(), e);
+                        }
+                    }
+                }
+            }
+
             JobContext ctx = new JobContext(
-                    run.id(), run.jobId(), job.jobType(), payload, run.attempt(), run.idempotencyKey());
+                    run.id(), run.jobId(), job.jobType(), payload,
+                    run.attempt(), run.idempotencyKey(), upstreamOutputs);
 
             maybeHandler.get().handle(ctx);
+
+            // Persist handler output if set (for downstream nodes in the same workflow)
+            if (outputStore != null && ctx.getResult() != null) {
+                outputStore.save(run.id(), ctx.getResult().toString());
+            }
 
             if (leases.markSucceeded(run.id(), token)) {
                 metrics.onSucceeded();

@@ -1,5 +1,7 @@
 package io.kinetis.api.config;
 
+import io.kinetis.core.admin.ArchivalService;
+import io.kinetis.core.admin.MaintenanceFlag;
 import io.kinetis.core.cron.CronScheduler;
 import io.kinetis.core.queue.RateLimiter;
 import io.kinetis.core.reaper.ReaperLoop;
@@ -35,6 +37,8 @@ public class LoopRunner implements AutoCloseable {
     private final CronScheduler cronScheduler;
     private final RateLimiter rateLimiter;
     private final WorkflowAdvancer workflowAdvancer;
+    private final MaintenanceFlag maintenanceFlag;
+    private final ArchivalService archivalService;
     private final SchedulerProperties props;
     private final String role;
 
@@ -47,6 +51,8 @@ public class LoopRunner implements AutoCloseable {
     public LoopRunner(SchedulerLoop schedulerLoop, ReaperLoop reaperLoop,
                       CronScheduler cronScheduler, RateLimiter rateLimiter,
                       WorkflowAdvancer workflowAdvancer,
+                      MaintenanceFlag maintenanceFlag,
+                      ArchivalService archivalService,
                       SchedulerProperties props,
                       @Value("${app.role:standalone}") String role) {
         this.schedulerLoop    = schedulerLoop;
@@ -54,6 +60,8 @@ public class LoopRunner implements AutoCloseable {
         this.cronScheduler    = cronScheduler;
         this.rateLimiter      = rateLimiter;
         this.workflowAdvancer = workflowAdvancer;
+        this.maintenanceFlag  = maintenanceFlag;
+        this.archivalService  = archivalService;
         this.props            = props;
         this.role             = role;
     }
@@ -69,11 +77,16 @@ public class LoopRunner implements AutoCloseable {
         long cronMs   = props.getCronInterval().toMillis();
         long refillMs = props.getRateLimitRefillInterval().toMillis();
 
-        executor.scheduleWithFixedDelay(() -> guard("scheduler", schedulerLoop::tick),        pollMs,   pollMs,   TimeUnit.MILLISECONDS);
-        executor.scheduleWithFixedDelay(() -> guard("reaper",    reaperLoop::tick),           reapMs,   reapMs,   TimeUnit.MILLISECONDS);
-        executor.scheduleWithFixedDelay(() -> guard("cron",      cronScheduler::tick),        cronMs,   cronMs,   TimeUnit.MILLISECONDS);
-        executor.scheduleWithFixedDelay(() -> guard("refill",    rateLimiter::refillAll),     refillMs, refillMs, TimeUnit.MILLISECONDS);
-        executor.scheduleWithFixedDelay(() -> guard("workflow",  workflowAdvancer::tick),     pollMs,   pollMs,   TimeUnit.MILLISECONDS);
+        // Core loops — skip silently when maintenance mode is active
+        executor.scheduleWithFixedDelay(() -> { if (!maintenanceFlag.isEnabled()) guard("scheduler", schedulerLoop::tick);    }, pollMs,   pollMs,   TimeUnit.MILLISECONDS);
+        executor.scheduleWithFixedDelay(() -> { if (!maintenanceFlag.isEnabled()) guard("reaper",    reaperLoop::tick);       }, reapMs,   reapMs,   TimeUnit.MILLISECONDS);
+        executor.scheduleWithFixedDelay(() -> { if (!maintenanceFlag.isEnabled()) guard("cron",      cronScheduler::tick);    }, cronMs,   cronMs,   TimeUnit.MILLISECONDS);
+        executor.scheduleWithFixedDelay(() -> guard("refill",   rateLimiter::refillAll),                                       refillMs, refillMs, TimeUnit.MILLISECONDS);
+        executor.scheduleWithFixedDelay(() -> { if (!maintenanceFlag.isEnabled()) guard("workflow",  workflowAdvancer::tick); }, pollMs,   pollMs,   TimeUnit.MILLISECONDS);
+
+        // Archival — runs regardless of maintenance mode (safe: only touches terminal rows)
+        long archiveMs = props.getArchivalInterval().toMillis();
+        executor.scheduleWithFixedDelay(() -> guard("archival", archivalService::tick), archiveMs, archiveMs, TimeUnit.MILLISECONDS);
 
         log.info("LoopRunner started (role={}): poll={}ms reaper={}ms cron={}ms refill={}ms",
                 role, pollMs, reapMs, cronMs, refillMs);

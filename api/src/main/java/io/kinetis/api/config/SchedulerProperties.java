@@ -56,6 +56,18 @@ public class SchedulerProperties {
     /** How often the token-bucket refill task runs. */
     private Duration rateLimitRefillInterval = Duration.ofSeconds(1);
 
+    // Archival
+    /** Retain terminal runs for this many days before moving to job_runs_archive. */
+    private int archivalRetentionDays = 30;
+
+    /** How often the archival task runs. */
+    private Duration archivalInterval = Duration.ofHours(1);
+
+    public int      getArchivalRetentionDays()              { return archivalRetentionDays; }
+    public void     setArchivalRetentionDays(int v)         { archivalRetentionDays = v; }
+    public Duration getArchivalInterval()                   { return archivalInterval; }
+    public void     setArchivalInterval(Duration v)         { archivalInterval = v; }
+
     // gRPC worker
     /** Port the worker gRPC server listens on when app.role=worker. */
     private int workerGrpcPort = 9090;

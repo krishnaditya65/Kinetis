@@ -59,7 +59,24 @@ app:
 scheduler:
   auth:
     enabled: ${SCHED_AUTH_ENABLED:false}
+  archival:
+    retention-days: ${SCHED_ARCHIVAL_RETENTION_DAYS:30}
+    interval:       ${SCHED_ARCHIVAL_INTERVAL:1h}
 
 logging:
   level:
     io.kinetis: ${LOG_LEVEL:INFO}
+
+# Distributed tracing — Micrometer Tracing → OpenTelemetry → OTLP collector
+management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLE_RATE:0.1}   # 10% sampling by default; set to 1.0 in dev
+
+# OTLP exporter endpoint (e.g. Jaeger, Grafana Tempo, Honeycomb)
+otel:
+  exporter:
+    otlp:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}
+  service:
+    name: ${spring.application.name}
