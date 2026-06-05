@@ -5,8 +5,10 @@
 
 -- Scheduler claim query:
 --   SELECT ... FROM job_runs WHERE state = 'SCHEDULED' AND scheduled_for <= now()
---   ORDER BY priority DESC, scheduled_for ASC FOR UPDATE SKIP LOCKED
-CREATE INDEX idx_due ON job_runs (priority DESC, scheduled_for ASC)
+--   ORDER BY scheduled_for ASC FOR UPDATE SKIP LOCKED
+-- Note: V6 rebuilds this index with (shard_id, priority DESC, scheduled_for) once the
+-- priority column is added in that migration.
+CREATE INDEX idx_due ON job_runs (scheduled_for ASC)
     WHERE state = 'SCHEDULED';
 
 -- Reaper query: find runs whose lease has expired

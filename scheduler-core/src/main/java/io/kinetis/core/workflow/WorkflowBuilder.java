@@ -1,5 +1,7 @@
 package io.kinetis.core.workflow;
 
+import io.kinetis.core.model.RetryPolicy;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -35,7 +37,7 @@ public final class WorkflowBuilder {
     // ---- failure policy ----
 
     public WorkflowBuilder failFast()        { policy = FailurePolicy.FAIL_FAST;        return this; }
-    public WorkflowBuilder wait()            { policy = FailurePolicy.WAIT;             return this; }
+    public WorkflowBuilder waitAll()         { policy = FailurePolicy.WAIT;             return this; }
     public WorkflowBuilder skipDownstream()  { policy = FailurePolicy.SKIP_DOWNSTREAM;  return this; }
     public WorkflowBuilder onFailure(FailurePolicy p) { policy = p; return this; }
 
