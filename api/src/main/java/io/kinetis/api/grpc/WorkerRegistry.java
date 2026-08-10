@@ -66,8 +66,8 @@ public class WorkerRegistry {
         pruneStale();
         List<WorkerEntry> live = new ArrayList<>(workers.values());
         if (live.isEmpty()) return null;
-        int idx = Math.abs(roundRobinIdx.getAndIncrement() % live.size());
-        return live.get(idx).stub();
+        int pickedIndex = Math.abs(roundRobinIdx.getAndIncrement() % live.size());
+        return live.get(pickedIndex).stub();
     }
 
     public int workerCount() {

@@ -27,10 +27,10 @@ public class QueueDepthGauge {
 
     private double dueCount() {
         try {
-            Long n = jdbc.queryForObject(
+            Long count = jdbc.queryForObject(
                     "SELECT count(*) FROM job_runs WHERE state = 'SCHEDULED' AND scheduled_for <= now()",
                     Long.class);
-            return n == null ? 0.0 : n.doubleValue();
+            return count == null ? 0.0 : count.doubleValue();
         } catch (RuntimeException e) {
             return 0.0;
         }

@@ -38,8 +38,8 @@ public final class IdempotencyKeys {
 
     private static String sha256(String input) {
         try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] digest = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            MessageDigest hasher = MessageDigest.getInstance("SHA-256");
+            byte[] digest = hasher.digest(input.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest);
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);

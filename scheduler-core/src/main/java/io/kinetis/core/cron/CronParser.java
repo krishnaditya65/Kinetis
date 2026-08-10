@@ -147,18 +147,18 @@ public final class CronParser {
     private static int resolveDow(String token) {
         String upper = token.toUpperCase();
         if (DOW_NAMES.containsKey(upper)) return DOW_NAMES.get(upper);
-        int v = parseInt(token, 0, 7, token);
-        return v == 0 ? 7 : v; // 0=Sunday → ISO 7
+        int parsed = parseInt(token, 0, 7, token);
+        return parsed == 0 ? 7 : parsed; // 0=Sunday → ISO 7
     }
 
-    private static int parseInt(String s, int min, int max, String context) {
+    private static int parseInt(String raw, int min, int max, String context) {
         try {
-            int v = Integer.parseInt(s.trim());
-            if (v < min || v > max)
-                throw new CronParseException("value " + v + " out of range [" + min + "-" + max + "] in: " + context);
-            return v;
+            int parsed = Integer.parseInt(raw.trim());
+            if (parsed < min || parsed > max)
+                throw new CronParseException("value " + parsed + " out of range [" + min + "-" + max + "] in: " + context);
+            return parsed;
         } catch (NumberFormatException e) {
-            throw new CronParseException("expected integer, got '" + s + "' in: " + context);
+            throw new CronParseException("expected integer, got '" + raw + "' in: " + context);
         }
     }
 }

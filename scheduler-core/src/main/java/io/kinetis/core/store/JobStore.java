@@ -66,13 +66,13 @@ public class JobStore {
     }
 
     static PGobject jsonb(String json) {
-        PGobject obj = new PGobject();
-        obj.setType("jsonb");
+        PGobject jsonObject = new PGobject();
+        jsonObject.setType("jsonb");
         try {
-            obj.setValue(json == null || json.isBlank() ? "{}" : json);
+            jsonObject.setValue(json == null || json.isBlank() ? "{}" : json);
         } catch (SQLException e) {
             throw new IllegalArgumentException("invalid jsonb payload", e);
         }
-        return obj;
+        return jsonObject;
     }
 }

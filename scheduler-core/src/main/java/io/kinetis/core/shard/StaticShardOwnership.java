@@ -34,10 +34,10 @@ public class StaticShardOwnership implements ShardOwnershipProvider {
         if (spec.contains("-")) {
             String[] parts = spec.split("-", 2);
             int from = Integer.parseInt(parts[0].trim());
-            int to   = Integer.parseInt(parts[1].trim());
-            if (from < 0 || to >= totalShards || from > to)
+            int rangeEnd = Integer.parseInt(parts[1].trim());
+            if (from < 0 || rangeEnd >= totalShards || from > rangeEnd)
                 throw new IllegalArgumentException("shard range " + spec + " invalid for totalShards=" + totalShards);
-            return Set.copyOf(IntStream.rangeClosed(from, to).boxed().collect(Collectors.toSet()));
+            return Set.copyOf(IntStream.rangeClosed(from, rangeEnd).boxed().collect(Collectors.toSet()));
         }
         int single = Integer.parseInt(spec.trim());
         if (single < 0 || single >= totalShards)

@@ -236,9 +236,9 @@ public class RaftNode {
         long prevIndex = nextIndex.getOrDefault(peer, raftLog.lastIndex() + 1) - 1;
         long prevTerm  = raftLog.termAt(prevIndex);
         List<LogEntry> entries = raftLog.from(prevIndex + 1);
-        long ci = commitIndex;
+        long committedIndex = commitIndex;
         long term = currentTerm;
-        AppendEntriesRequest req = new AppendEntriesRequest(term, nodeId, prevIndex, prevTerm, entries, ci);
+        AppendEntriesRequest req = new AppendEntriesRequest(term, nodeId, prevIndex, prevTerm, entries, committedIndex);
         rpcExecutor.submit(() -> {
             AppendEntriesResponse resp = rpc.appendEntries(peer, req);
             if (resp != null)
@@ -262,11 +262,11 @@ public class RaftNode {
     }
 
     private void tryAdvanceCommitIndex() {
-        for (long n = raftLog.lastIndex(); n > commitIndex; n--) {
-            if (raftLog.termAt(n) != currentTerm) continue;
+        for (long candidateIndex = raftLog.lastIndex(); candidateIndex > commitIndex; candidateIndex--) {
+            if (raftLog.termAt(candidateIndex) != currentTerm) continue;
             long count = 1;
-            for (long match : matchIndex.values()) if (match >= n) count++;
-            if (count >= quorum()) { commitIndex = n; applyCommitted(); break; }
+            for (long match : matchIndex.values()) if (match >= candidateIndex) count++;
+            if (count >= quorum()) { commitIndex = candidateIndex; applyCommitted(); break; }
         }
     }
 

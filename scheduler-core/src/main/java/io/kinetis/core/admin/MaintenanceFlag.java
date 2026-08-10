@@ -47,9 +47,9 @@ public class MaintenanceFlag {
 
     private boolean loadFromDb() {
         try {
-            String val = jdbc.queryForObject(
+            String value = jdbc.queryForObject(
                     "SELECT value FROM scheduler_settings WHERE key = ?", String.class, KEY);
-            return "true".equalsIgnoreCase(val);
+            return "true".equalsIgnoreCase(value);
         } catch (Exception e) {
             log.debug("could not read maintenance_mode from DB; defaulting to false", e);
             return false;

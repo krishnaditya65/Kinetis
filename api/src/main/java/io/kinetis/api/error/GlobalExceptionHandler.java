@@ -14,10 +14,10 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail onIllegalArgument(IllegalArgumentException ex) {
-        ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
-        pd.setTitle("Invalid request");
-        pd.setDetail(ex.getMessage());
-        return pd;
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problemDetail.setTitle("Invalid request");
+        problemDetail.setDetail(ex.getMessage());
+        return problemDetail;
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -25,9 +25,9 @@ public class GlobalExceptionHandler {
         String detail = ex.getBindingResult().getFieldErrors().stream()
                 .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
                 .collect(Collectors.joining("; "));
-        ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
-        pd.setTitle("Validation failed");
-        pd.setDetail(detail.isBlank() ? "request validation failed" : detail);
-        return pd;
+        ProblemDetail problemDetail = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problemDetail.setTitle("Validation failed");
+        problemDetail.setDetail(detail.isBlank() ? "request validation failed" : detail);
+        return problemDetail;
     }
 }

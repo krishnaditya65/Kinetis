@@ -80,12 +80,12 @@ public class WorkflowStore {
 
     /** Count of upstreams of {@code runId} that are NOT yet SUCCEEDED. */
     public int countPendingUpstreams(UUID runId) {
-        Integer n = jdbc.queryForObject("""
+        Integer count = jdbc.queryForObject("""
                 SELECT count(*) FROM job_dependencies jd
                 JOIN job_runs jr ON jr.id = jd.depends_on_run_id
                 WHERE jd.run_id = ? AND jr.state != 'SUCCEEDED'
                 """, Integer.class, runId);
-        return n == null ? 0 : n;
+        return count == null ? 0 : count;
     }
 
     public void updateWorkflowState(UUID workflowId, WorkflowState state) {

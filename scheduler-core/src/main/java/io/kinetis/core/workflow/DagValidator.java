@@ -68,11 +68,11 @@ public final class DagValidator {
                                      Map<String, Integer> colour) {
         colour.put(node, 1); // grey — in current DFS path
         for (String neighbour : adj.get(node)) {
-            int c = colour.get(neighbour);
-            if (c == 1)
+            int neighbourColour = colour.get(neighbour);
+            if (neighbourColour == 1)
                 throw new IllegalArgumentException(
                         "cycle detected in DAG involving node: " + neighbour);
-            if (c == 0)
+            if (neighbourColour == 0)
                 detectCycle(neighbour, adj, colour);
         }
         colour.put(node, 2); // black — fully explored

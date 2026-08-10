@@ -95,7 +95,7 @@ public class UiController {
     /** DAG visualiser — nodes + edges from a workflow. */
     @GetMapping("/workflows/{workflowId}")
     public String workflowDetail(@PathVariable UUID workflowId, Model model) {
-        var wf = workflowService.findWorkflow(workflowId)
+        var workflow = workflowService.findWorkflow(workflowId)
                 .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
                         org.springframework.http.HttpStatus.NOT_FOUND));
         var nodes = workflowService.findNodes(workflowId);
@@ -110,7 +110,7 @@ public class UiController {
                 WHERE from_r.workflow_id = ?
                 """, workflowId);
 
-        model.addAttribute("workflow", wf);
+        model.addAttribute("workflow", workflow);
         model.addAttribute("nodes",    nodes);
         model.addAttribute("edges",    edges);
         return "workflow";

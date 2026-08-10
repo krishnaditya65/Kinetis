@@ -103,11 +103,11 @@ public class JobController {
     private static RetryPolicy retryPolicy(SubmitJobRequest req) {
         if (req.maxAttempts() == null && req.backoffBaseMs() == null && req.backoffFactor() == null)
             return null;
-        RetryPolicy d = RetryPolicy.defaults();
+        RetryPolicy defaults = RetryPolicy.defaults();
         return new RetryPolicy(
-                req.maxAttempts()    != null ? req.maxAttempts()    : d.maxAttempts(),
-                req.backoffBaseMs()  != null ? req.backoffBaseMs()  : d.backoffBaseMs(),
-                req.backoffFactor()  != null ? req.backoffFactor()  : d.backoffFactor());
+                req.maxAttempts()    != null ? req.maxAttempts()    : defaults.maxAttempts(),
+                req.backoffBaseMs()  != null ? req.backoffBaseMs()  : defaults.backoffBaseMs(),
+                req.backoffFactor()  != null ? req.backoffFactor()  : defaults.backoffFactor());
     }
 
     /**
@@ -116,10 +116,10 @@ public class JobController {
      */
     static Instant parseScheduleAt(String raw, Instant now) {
         if (raw == null || raw.isBlank()) return now;
-        String s = raw.trim();
-        if (s.startsWith("+")) return now.plus(parseOffset(s.substring(1)));
+        String trimmed = raw.trim();
+        if (trimmed.startsWith("+")) return now.plus(parseOffset(trimmed.substring(1)));
         try {
-            return Instant.parse(s);
+            return Instant.parse(trimmed);
         } catch (DateTimeParseException e) {
             throw new IllegalArgumentException(
                     "scheduleAt must be an ISO-8601 instant or a relative offset like +5s: " + raw);

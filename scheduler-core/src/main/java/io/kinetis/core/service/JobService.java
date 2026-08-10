@@ -121,10 +121,10 @@ public class JobService {
 
     /** Next scheduled fire time for a recurring job; empty for one-off jobs. */
     public Optional<Instant> nextFireTime(UUID jobId) {
-        Timestamp ts = jdbc.queryForObject(
+        Timestamp timestamp = jdbc.queryForObject(
                 "SELECT next_fire_time FROM jobs WHERE id = ?",
                 (rs, r) -> rs.getTimestamp(1), jobId);
-        return Optional.ofNullable(ts).map(Timestamp::toInstant);
+        return Optional.ofNullable(timestamp).map(Timestamp::toInstant);
     }
 
     private void initNextFireTime(UUID jobId, Job job) {

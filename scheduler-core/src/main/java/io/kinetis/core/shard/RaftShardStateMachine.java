@@ -40,7 +40,7 @@ public class RaftShardStateMachine implements RaftStateMachine {
             log.warn("malformed shard command at index {}: '{}'", index, cmd);
             return;
         }
-        String op     = parts[0];
+        String operation = parts[0];
         String nodeId = parts[1];
         int shardId;
         try {
@@ -50,25 +50,25 @@ public class RaftShardStateMachine implements RaftStateMachine {
             return;
         }
         if (!localNodeId.equals(nodeId)) return;
-        switch (op) {
+        switch (operation) {
             case "ASSIGN"  -> { ownedShards.add(shardId);    log.info("shard {} ASSIGNED to {}",  shardId, nodeId); }
             case "RELEASE" -> { ownedShards.remove(shardId); log.info("shard {} RELEASED from {}", shardId, nodeId); }
-            default        -> log.warn("unknown shard op '{}' at index {}", op, index);
+            default        -> log.warn("unknown shard op '{}' at index {}", operation, index);
         }
     }
 
     @Override
     public byte[] snapshot() {
-        String data = String.join(" ", ownedShards.stream().sorted().map(String::valueOf).toList());
-        return (localNodeId + "=" + data).getBytes(StandardCharsets.UTF_8);
+        String shardList = String.join(" ", ownedShards.stream().sorted().map(String::valueOf).toList());
+        return (localNodeId + "=" + shardList).getBytes(StandardCharsets.UTF_8);
     }
 
     @Override
     public void restoreSnapshot(long lastIncludedIndex, long lastIncludedTerm, byte[] snapshot) {
-        String s  = new String(snapshot, StandardCharsets.UTF_8);
-        int eq    = s.indexOf('=');
-        if (eq < 0 || !localNodeId.equals(s.substring(0, eq))) return;
-        String shards = s.substring(eq + 1).trim();
+        String text   = new String(snapshot, StandardCharsets.UTF_8);
+        int equalsIdx = text.indexOf('=');
+        if (equalsIdx < 0 || !localNodeId.equals(text.substring(0, equalsIdx))) return;
+        String shards = text.substring(equalsIdx + 1).trim();
         ownedShards.clear();
         if (!shards.isEmpty())
             Arrays.stream(shards.split("\\s+")).map(Integer::parseInt).forEach(ownedShards::add);

@@ -49,10 +49,10 @@ public final class CronEvaluator {
 
             // Year
             if (expr.year().isPresent()) {
-                FieldConstraint yr = expr.year().get();
+                FieldConstraint yearConstraint = expr.year().get();
                 int year = candidate.getYear();
-                if (!yr.matches(year)) {
-                    int next = nextMatchingInt(yr, year + 1, 1970, 2099);
+                if (!yearConstraint.matches(year)) {
+                    int next = nextMatchingInt(yearConstraint, year + 1, 1970, 2099);
                     if (next == -1) break;
                     candidate = candidate.withYear(next).withMonth(1).withDayOfMonth(1)
                             .truncatedTo(ChronoUnit.DAYS);
@@ -179,8 +179,8 @@ public final class CronEvaluator {
     private static int nearestWeekday(int targetDay, LocalDate ref) {
         int lastDay = ref.lengthOfMonth();
         int day = Math.min(targetDay, lastDay);
-        LocalDate d = ref.withDayOfMonth(day);
-        DayOfWeek dow = d.getDayOfWeek();
+        LocalDate candidateDate = ref.withDayOfMonth(day);
+        DayOfWeek dow = candidateDate.getDayOfWeek();
         if (dow == DayOfWeek.SATURDAY) return day == 1 ? day + 2 : day - 1;
         if (dow == DayOfWeek.SUNDAY)   return day == lastDay ? day - 2 : day + 1;
         return day;
@@ -211,8 +211,8 @@ public final class CronEvaluator {
             case CompositeList cl   -> {
                 int best = -1;
                 for (FieldConstraint part : cl.parts()) {
-                    int c = nextMatchingInt(part, from, fieldMin, fieldMax);
-                    if (c != -1 && (best == -1 || c < best)) best = c;
+                    int matched = nextMatchingInt(part, from, fieldMin, fieldMax);
+                    if (matched != -1 && (best == -1 || matched < best)) best = matched;
                 }
                 yield best;
             }

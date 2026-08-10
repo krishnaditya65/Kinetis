@@ -66,7 +66,7 @@ public class ArchivalService {
      * Total archived rows (for metrics / admin endpoint).
      */
     public long archivedCount() {
-        Long n = jdbc.queryForObject("SELECT count(*) FROM job_runs_archive", Long.class);
-        return n == null ? 0 : n;
+        Long count = jdbc.queryForObject("SELECT count(*) FROM job_runs_archive", Long.class);
+        return count == null ? 0 : count;
     }
 }

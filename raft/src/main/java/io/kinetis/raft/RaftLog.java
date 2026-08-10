@@ -80,7 +80,7 @@ public class RaftLog {
     /** Term at {@code index}, or snapshotTerm if compacted, or -1 if unknown. */
     public long termAt(long index) {
         if (index == snapshotIndex) return snapshotTerm;
-        LogEntry e = get(index);
-        return e == null ? -1 : e.term();
+        LogEntry entry = get(index);
+        return entry == null ? -1 : entry.term();
     }
 }

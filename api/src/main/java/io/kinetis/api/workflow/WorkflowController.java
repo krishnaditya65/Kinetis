@@ -59,12 +59,12 @@ public class WorkflowController {
 
     @GetMapping("/{workflowId}")
     public WorkflowView getWorkflow(@PathVariable UUID workflowId) {
-        Workflow wf = workflowService.findWorkflow(workflowId)
+        Workflow workflow = workflowService.findWorkflow(workflowId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "workflow not found: " + workflowId));
         List<DagNodeView> nodes = workflowService.findNodes(workflowId).stream()
                 .map(DagNodeView::from).toList();
-        return WorkflowView.from(wf, nodes);
+        return WorkflowView.from(workflow, nodes);
     }
 
     @DeleteMapping("/{workflowId}")
@@ -79,10 +79,10 @@ public class WorkflowController {
     private static RetryPolicy retryPolicy(DagNodeRequest n) {
         if (n.maxAttempts() == null && n.backoffBaseMs() == null && n.backoffFactor() == null)
             return null;
-        RetryPolicy d = RetryPolicy.defaults();
+        RetryPolicy defaults = RetryPolicy.defaults();
         return new RetryPolicy(
-                n.maxAttempts()   != null ? n.maxAttempts()   : d.maxAttempts(),
-                n.backoffBaseMs() != null ? n.backoffBaseMs() : d.backoffBaseMs(),
-                n.backoffFactor() != null ? n.backoffFactor() : d.backoffFactor());
+                n.maxAttempts()   != null ? n.maxAttempts()   : defaults.maxAttempts(),
+                n.backoffBaseMs() != null ? n.backoffBaseMs() : defaults.backoffBaseMs(),
+                n.backoffFactor() != null ? n.backoffFactor() : defaults.backoffFactor());
     }
 }
